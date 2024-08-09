@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -24,6 +24,9 @@
         <video id="remote" autoplay muted playsinline></video>
       </div>
     </div>
+
+    <button id="mute">Mute</button>
+    <button id="unmute">Unmute</button>
 
     <script type="module">
       // This is the App ID from the dashboard that identifies this Calls Application.
@@ -187,6 +190,12 @@
       // Now we wait for the tracks to resolve
       const pulledTracks = await resolvingTracks;
 
+      pulledTracks.forEach((track) => {
+        console.log(track, "track event firing");
+        track.onmute = () => console.log("muted track", track);
+        track.onunmute = () => console.log("unmuted track", track);
+      });
+
       // Lastly, we set them in the remoteVideo to display
       const remoteVideoStream = new MediaStream();
       remoteVideo.srcObject = remoteVideoStream;
@@ -248,6 +257,54 @@
             "iceconnectionstatechange",
             iceConnectionStateChangeHandler,
           );
+          peerConnection.onnegotiationneeded = async () => {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            const pushTracksResponse = await fetch(
+              `${API_BASE}/sessions/${localSession.sessionId}/tracks/new`,
+              {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                  sessionDescription: {
+                    sdp: offer.sdp,
+                    type: "offer",
+                  },
+                  tracks: peerConnection
+                    .getTransceivers()
+                    .filter((t) => t.sender.track?.id)
+                    .map(({ mid, sender }) => ({
+                      location: "local",
+                      mid,
+                      trackName: sender.track.id,
+                    })),
+                }),
+              },
+            ).then((res) => res.json());
+            console.log(pushTracksResponse);
+          };
+        });
+
+        document.getElementById("mute").addEventListener("click", () => {
+          console.log(
+            "firing mute",
+            localSession.peerConnection.getTransceivers(),
+          );
+
+          localSession.peerConnection
+            .getTransceivers()
+            .forEach((t) => (t.direction = "recvonly"));
+        });
+
+        document.getElementById("unmute").addEventListener("click", () => {
+          console.log(
+            "firing unmute",
+            localSession.peerConnection.getTransceivers(),
+          );
+
+          localSession.peerConnection
+            .getTransceivers()
+            .forEach((t) => (t.direction = "sendrecv"));
         });
 
         // Once both local and remote descriptions are set, the ICE process begins
@@ -265,17 +322,8 @@
 
       html {
         color-scheme: light dark;
-        font-family:
-          system-ui,
-          -apple-system,
-          BlinkMacSystemFont,
-          "Segoe UI",
-          Roboto,
-          Oxygen,
-          Ubuntu,
-          Cantarell,
-          "Open Sans",
-          "Helvetica Neue",
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue",
           sans-serif;
         background: white;
         color: black;
